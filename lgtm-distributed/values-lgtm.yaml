@@ -1,0 +1,85 @@
+grafana:
+  enabled: true
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Loki
+          uid: loki
+          type: loki
+          url: http://{{ .Release.Name }}-loki-gateway
+          isDefault: false
+        - name: Mimir
+          uid: prom
+          type: prometheus
+          url: http://{{ .Release.Name }}-mimir-nginx/prometheus
+          isDefault: true
+        - name: Tempo
+          uid: tempo
+          type: tempo
+          url: http://{{ .Release.Name }}-tempo-query-frontend:3200
+          isDefault: false
+          jsonData:
+            tracesToLogsV2:
+              datasourceUid: loki
+            lokiSearch:
+              datasourceUid: loki
+            tracesToMetrics:
+              datasourceUid: prom
+            serviceMap:
+              datasourceUid: prom
+
+loki:
+  enabled: true
+
+mimir:
+  enabled: true
+  alertmanager:
+    resources:
+      requests: { cpu: 20m }
+  compactor:
+    resources:
+      requests: { cpu: 20m }
+  distributor:
+    resources:
+      requests: { cpu: 20m }
+  ingester:
+    replicas: 2
+    zoneAwareReplication: { enabled: false }
+    resources:
+      requests: { cpu: 20m }
+  overrides_exporter:
+    resources:
+      requests: { cpu: 20m }
+  querier:
+    replicas: 1
+    resources:
+      requests: { cpu: 20m }
+  query_frontend:
+    resources:
+      requests: { cpu: 20m }
+  query_scheduler:
+    replicas: 1
+    resources:
+      requests: { cpu: 20m }
+  ruler:
+    resources:
+      requests: { cpu: 20m }
+  store_gateway:
+    zoneAwareReplication: { enabled: false }
+    resources:
+      requests: { cpu: 20m }
+  minio:
+    resources:
+      requests: { cpu: 20m }
+  rollout_operator:
+    resources:
+      requests: { cpu: 20m }
+
+tempo:
+  enabled: true
+  ingester:
+    replicas: 1
+
+grafana-oncall:
+  enabled: false

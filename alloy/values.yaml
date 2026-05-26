@@ -1,0 +1,249 @@
+alloy:
+  clustering:
+    enabled: false
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+  serviceAccount:
+    create: true
+    name: ""
+  rbac:
+    create: true
+
+  # Expose OTLP ports so services can send traces directly to Alloy
+  extraPorts:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
+      protocol: TCP
+    - name: otlp-http
+      port: 4318
+      targetPort: 4318
+      protocol: TCP
+    - name: otlp-grpc-ext
+      port: 4319
+      targetPort: 4319
+      protocol: TCP
+    - name: otlp-http-ext
+      port: 4320
+      targetPort: 4320
+      protocol: TCP
+
+  configMap:
+    content: |
+      // ============================================================
+      // DISCOVERY: Kubernetes pods in monitoring namespace
+      // Shared by both the metrics and logs pipelines
+      // ============================================================
+      discovery.kubernetes "pods" {
+        role = "pod"
+        namespaces {
+          names = ["monitoring", "apps"]
+        }
+      }
+
+      // ============================================================
+      // PIPELINE 1 — METRICS → MIMIR
+      // ============================================================
+
+      // Filter and relabel targets for Prometheus scraping
+      discovery.relabel "pod_metrics" {
+        targets = discovery.kubernetes.pods.targets
+
+        // Only scrape mimir pods
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          regex         = "mimir-.*"
+          action        = "keep"
+        }
+
+        // Only scrape ports named http, metrics, or *-metrics
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_port_name"]
+          regex         = "(http|metrics|.*-metrics)"
+          action        = "keep"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_phase"]
+          regex         = "Succeeded|Failed"
+          action        = "drop"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_namespace", "__meta_kubernetes_pod_label_name"]
+          separator     = "/"
+          replacement   = "$1"
+          action        = "replace"
+          target_label  = "job"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          action        = "replace"
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          action        = "replace"
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          action        = "replace"
+          target_label  = "container"
+        }
+      }
+
+      prometheus.scrape "kubernetes_pods" {
+        targets         = discovery.relabel.pod_metrics.output
+        forward_to      = [prometheus.remote_write.mimir.receiver]
+        scrape_interval = "15s"
+        scrape_timeout  = "10s"
+      }
+
+      prometheus.remote_write "mimir" {
+        endpoint {
+          url = "http://mimir-gateway.monitoring.svc.cluster.local/api/v1/push"
+          send_native_histograms = true
+          headers = {
+            "X-Scope-OrgID" = "1",
+          }
+        }
+      }
+
+      // ============================================================
+      // PIPELINE 2 — LOGS → LOKI
+      // ============================================================
+
+      // Relabel pods for log collection (all pods, not just mimir)
+      discovery.relabel "pod_logs" {
+        targets = discovery.kubernetes.pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_phase"]
+          regex         = "Succeeded|Failed"
+          action        = "drop"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          action        = "replace"
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          action        = "replace"
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          action        = "replace"
+          target_label  = "container"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          action        = "replace"
+          target_label  = "job"
+        }
+      }
+
+      loki.source.kubernetes "pods" {
+        targets    = discovery.relabel.pod_logs.output
+        forward_to = [loki.write.loki.receiver]
+      }
+
+      loki.write "loki" {
+        endpoint {
+          url = "http://loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push"
+          headers = {
+            "X-Scope-OrgID" = "1",
+          }
+        }
+      }
+
+      // ============================================================
+      // PIPELINE 3 — TRACES → TEMPO
+      // ============================================================
+
+      // Receive OTLP traces from instrumented services (gRPC + HTTP)
+      otelcol.receiver.otlp "default" {
+        grpc {
+          endpoint = "0.0.0.0:4317"
+        }
+        http {
+          endpoint = "0.0.0.0:4318"
+        }
+
+        output {
+          traces  = [otelcol.exporter.otlp.tempo.input]
+          metrics = [otelcol.exporter.prometheus.mimir.input]
+        }
+      }
+
+      otelcol.exporter.prometheus "mimir" {
+        forward_to = [prometheus.remote_write.mimir.receiver]
+      }
+
+      otelcol.exporter.otlp "tempo" {
+        client {
+          endpoint = "tempo-distributor.monitoring.svc.cluster.local:4317"
+          tls {
+            insecure = true
+          }
+          headers = {
+            "X-Scope-OrgID" = "1",
+          }
+        }
+      }
+
+      // ============================================================
+      // PIPELINE 4 — EXTERNAL OTLP (AUTHENTICATED) → TEMPO/MIMIR/LOKI
+      // ============================================================
+
+      otelcol.auth.bearer "external" {
+        token = env("EXTERNAL_API_TOKEN")
+      }
+
+      otelcol.receiver.otlp "external" {
+        grpc {
+          endpoint = "0.0.0.0:4319"
+          auth     = otelcol.auth.bearer.external.handler
+        }
+        http {
+          endpoint = "0.0.0.0:4320"
+          auth     = otelcol.auth.bearer.external.handler
+        }
+        output {
+          traces  = [otelcol.exporter.otlp.tempo.input]
+          metrics = [otelcol.exporter.prometheus.mimir.input]
+          logs    = [otelcol.exporter.loki.logs.input]
+        }
+      }
+
+      otelcol.exporter.loki "logs" {
+        forward_to = [loki.write.loki.receiver]
+      }
+
+  extraEnv:
+    - name: EXTERNAL_API_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: alloy-external-token
+          key: token
+
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 472
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 472
+    fsGroup: 472
+
+serviceMonitor:
+  enabled: false

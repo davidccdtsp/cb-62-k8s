@@ -1,0 +1,31 @@
+// ============================================================
+// PIPELINE — OTLP FROM BACKEND → K8S CLUSTER ALLOY
+// ============================================================
+
+// Receive all OTLP signals from the local backend.
+// No auth needed: backend and Alloy share a private Docker network.
+otelcol.receiver.otlp "local" {
+  grpc { endpoint = "0.0.0.0:4317" }
+  http { endpoint = "0.0.0.0:4318" }
+  output {
+    traces  = [otelcol.exporter.otlphttp.cluster.input]
+    metrics = [otelcol.exporter.otlphttp.cluster.input]
+    logs    = [otelcol.exporter.otlphttp.cluster.input]
+  }
+}
+
+// Bearer token used to authenticate against the cluster Alloy receiver.
+otelcol.auth.bearer "cluster" {
+  token = env("ALLOY_BEARER_TOKEN")
+}
+
+// Forward all telemetry via HTTP (no TLS requirement for bearer token over HTTP).
+otelcol.exporter.otlphttp "cluster" {
+  client {
+    endpoint = env("CLUSTER_ALLOY_ENDPOINT")
+    auth     = otelcol.auth.bearer.cluster.handler
+    tls {
+      insecure = true
+    }
+  }
+}

@@ -1,0 +1,53 @@
+services:
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - observability
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ..
+      dockerfile: external/Dockerfile
+    environment:
+      OTEL_SERVICE_NAME: backend
+      OTEL_RESOURCE_ATTRIBUTES: service.namespace=external
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: otlp
+      OTEL_LOGS_EXPORTER: otlp
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      LANGFUSE_HOST: ${LANGFUSE_HOST}
+    networks:
+      - observability
+      - minikube
+    depends_on:
+      - alloy
+
+  alloy:
+    image: grafana/alloy:latest
+    command: run --server.http.listen-addr=0.0.0.0:12345 /etc/alloy/config.alloy
+    environment:
+      ALLOY_BEARER_TOKEN: ${ALLOY_BEARER_TOKEN}
+      CLUSTER_ALLOY_ENDPOINT: ${CLUSTER_ALLOY_ENDPOINT}
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+    ports:
+      - "12345:12345"
+    networks:
+      - observability
+      - minikube
+
+networks:
+  observability:
+    driver: bridge
+  minikube:
+    external: true
+    name: minikube

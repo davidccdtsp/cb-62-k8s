@@ -1,0 +1,59 @@
+---
+global:
+  clusterDomain: 'cluster.local'
+gateway:
+  enabled: true
+# serviceAccount name overridden to avoid collision with mimir's minio-sa in the same namespace
+minio:
+  enabled: true
+  serviceAccount:
+    name: tempo-minio-sa
+storage:
+  trace:
+    backend: s3
+    s3:
+      access_key: 'grafana-tempo'
+      secret_key: 'supersecret'
+      bucket: 'tempo-traces'
+      endpoint: 'tempo-minio:9000'
+      insecure: true
+traces:
+  otlp:
+    http:
+      enabled: true
+    grpc:
+      enabled: true
+distributor:
+  config:
+    log_received_spans:
+      enabled: true
+    log_discarded_spans:
+      enabled: true
+
+metricsGenerator:
+  enabled: true
+  config:
+    storage:
+      path: /var/tempo/wal
+      remote_write:
+        - url: http://mimir-gateway.monitoring.svc.cluster.local/api/v1/push
+          headers:
+            X-Scope-OrgID: "1"
+    processor:
+      service_graphs: {}
+      span_metrics: {}
+      local_blocks:
+        filter_server_spans: false
+
+querier:
+  config:
+    search:
+      prefer_self: 10
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors:
+        - service-graphs
+        - span-metrics
+        - local-blocks
