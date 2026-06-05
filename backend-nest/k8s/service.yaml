@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-nest
+  namespace: apps
+spec:
+  selector:
+    app: backend-nest
+  ports:
+    - port: 3000
+      targetPort: 3000

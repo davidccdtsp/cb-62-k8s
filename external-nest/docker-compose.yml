@@ -1,55 +1,53 @@
 services:
-  nginx:
-    image: nginx:alpine
+  apache:
+    image: httpd:alpine
     ports:
-      - "80:80"
+      - "81:81"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./apache/httpd.conf:/usr/local/apache2/conf/httpd.conf:ro
     networks:
-      - observability
+      - observability-nest
     depends_on:
-      - backend
+      - backend-nest
 
-  backend:
+  backend-nest:
     build:
       context: ..
-      dockerfile: external/Dockerfile
+      dockerfile: external-nest/Dockerfile
     environment:
-      OTEL_SERVICE_NAME: backend
+      OTEL_SERVICE_NAME: backend-nest
       OTEL_RESOURCE_ATTRIBUTES: service.namespace=external
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy-nest:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
-      OTEL_TRACES_EXPORTER: otlp
-      OTEL_METRICS_EXPORTER: otlp
-      OTEL_LOGS_EXPORTER: otlp
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
       LANGFUSE_HOST: ${LANGFUSE_HOST}
-      KEYCLOAK_URL: ${KEYCLOAK_URL:-http://keycloak.${MINIKUBE_IP}.nip.io}
+      KEYCLOAK_URL: ${KEYCLOAK_URL:-https://keycloak.${MINIKUBE_IP}.nip.io}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-poc}
-      KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-backend-external}
+      KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-backend-nest-external}
+      NODE_TLS_REJECT_UNAUTHORIZED: "0"
     networks:
-      - observability
+      - observability-nest
       - minikube
     depends_on:
-      - alloy
+      - alloy-nest
 
-  alloy:
+  alloy-nest:
     image: grafana/alloy:latest
     command: run --server.http.listen-addr=0.0.0.0:12345 /etc/alloy/config.alloy
     environment:
       ALLOY_BEARER_TOKEN: ${ALLOY_BEARER_TOKEN}
       CLUSTER_ALLOY_ENDPOINT: ${CLUSTER_ALLOY_ENDPOINT}
     volumes:
-      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - ../external/alloy/config.alloy:/etc/alloy/config.alloy:ro
     ports:
-      - "12345:12345"
+      - "12346:12345"
     networks:
-      - observability
+      - observability-nest
       - minikube
 
 networks:
-  observability:
+  observability-nest:
     driver: bridge
   minikube:
     external: true

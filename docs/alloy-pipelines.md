@@ -6,7 +6,7 @@ Cada pipeline es independiente y puede fallar sin afectar a los demás.
 ## Arquitectura
 
 ```
-                        ┌─────────────────────────────────────────┐
+                        ┌──────────────────────────────────────────┐
                         │           Grafana Alloy                  │
                         │                                          │
   Kubernetes API ───────┤  discovery.kubernetes "pods"             │
@@ -20,7 +20,7 @@ Cada pipeline es independiente y puede fallar sin afectar a los demás.
                         │     │        .kubernetes                 │
                         │     │             │                      │
   Services ─────────────┤  otelcol.receiver.otlp                   │
-  (OTLP gRPC/HTTP)      │  :4317 / :4318   │                       │
+  (OTLP gRPC/HTTP)      │  :4317 / :4318    │                      │
                         │     │             │                      │
                         └─────┼─────────────┼──────────────────────┘
                               │             │             │

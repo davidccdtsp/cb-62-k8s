@@ -2,6 +2,28 @@
 
 Stack de monitorización grafana LGTM sobre Kubernetes
 
+## Índice
+
+- [Prerrequisitos](#prerrequisitos)
+- [Arquitectura](#arquitectura)
+- [Quickstart](#quickstart)
+- [Despliegue](#despliegue)
+  - [Despliegue paso a paso](#despliegue-paso-a-paso)
+- [Uso del stack](#uso-del-stack)
+  - [1. Acceder a Grafana](#1-acceder-a-grafana)
+  - [2. Generar métricas, logs y trazas](#2-generar-métricas-logs-y-trazas)
+  - [3. Ver telemetría en Grafana](#3-ver-telemetría-en-grafana)
+  - [4. Langfuse](#4-langfuse)
+  - [5. Verificar el estado del stack](#5-verificar-el-estado-del-stack)
+  - [6. Keycloak — JWT y tenants](#6-keycloak--jwt-y-tenants)
+- [Servicio externo Python (Docker Compose)](#servicio-externo-docker-compose)
+- [Servicio externo NestJS (Docker Compose)](#servicio-externo-nestjs-docker-compose)
+- [Configuración](#configuración)
+- [Solución de problemas](#solución-de-problemas)
+- [Desinstalar](#desinstalar)
+- [Recursos](#recursos)
+
+---
 
 ## Prerrequisitos
 
@@ -21,6 +43,10 @@ Stack de monitorización grafana LGTM sobre Kubernetes
 │  ┌─────────────────────────────────────────────────┐    │
 │  │  backend (FastAPI)                              │    │
 │  │  OTel Operator inyecta el agente Python         │    │
+│  └──────┬──────────────────────────────────────────┘    │
+│  ┌─────────────────────────────────────────────────┐    │
+│  │  backend-nest (NestJS)                          │    │
+│  │  OTel Operator inyecta el agente Node.js        │    │
 │  └──────┬──────────────────────────────────────────┘    │
 │         │ OTLP HTTP :4318 (trazas + métricas OTLP)      │
 └─────────┼───────────────────────────────────────────────┘
@@ -54,7 +80,168 @@ Stack de monitorización grafana LGTM sobre Kubernetes
 | **Alloy** | Collector unificado: scrape métricas, recoge logs de pods, recibe trazas OTLP |
 | **OTel Operator** | Inyecta el agente OpenTelemetry automáticamente en los pods del namespace `apps` |
 | **backend** | Servicio FastAPI de demo; instrumentado sin cambios de código |
+| **backend-nest** | Servicio NestJS de demo; misma API que el Python, instrumentado con el agente Node.js del OTel Operator |
 | **Langfuse** | Plataforma de observabilidad para LLMs; trazas, métricas y evaluaciones de modelos |
+| **Keycloak** | Identity provider; emite JWTs con claim `tenant_id` para identificar el tenant en cada petición |
+
+---
+
+## Quickstart
+
+Pasos mínimos para tener el stack operativo y ver datos en Grafana.
+
+**1. Arrancar minikube**
+
+```bash
+minikube start
+```
+
+**2. Desplegar todo el stack**
+
+```bash
+./deploy.sh
+```
+
+El script despliega cert-manager, OTel Operator, Grafana, Mimir, Loki, Tempo, Alloy, el backend de demo, Langfuse y Keycloak en el orden correcto. Tarda ~5 minutos.
+
+**3. Verificar que los pods estén listos**
+
+```bash
+minikube kubectl -- get pods -n monitoring
+minikube kubectl -- get pods -n apps
+```
+
+Esperar a que todos los pods estén `Running` o `Completed`.
+
+**4. Exponer Grafana y los backends**
+
+```bash
+# En terminales separadas:
+kubectl port-forward svc/grafana 3000:80 -n monitoring
+minikube kubectl -- port-forward svc/backend 8100:8000 -n apps
+minikube kubectl -- port-forward svc/backend-nest 8200:3000 -n apps
+```
+
+**5. Configuración Keycloak**
+
+1. Obtener la URL de Keycloak y abrirla en el navegador:
+   ```bash
+   echo "https://keycloak.$(minikube ip).nip.io"
+   ```
+2. Crear el realm `poc` importando el fichero `realm-export.json` del directorio `keycloak`.
+3. Crear usuarios: completar los campos de la pestaña **Details** y generar una contraseña en **Credentials**.
+4. Obtener el token (el `client-secret` se encuentra en la pestaña **Credentials** del cliente en Keycloak):
+
+```bash
+KEYCLOAK_URL="https://keycloak.$(minikube ip).nip.io"
+TOKEN=$(curl -sk -X POST ${KEYCLOAK_URL}/realms/poc/protocol/openid-connect/token \
+  -d "client_id=<client-id>" \
+  -d "client_secret=<client-secret>" \
+  -d "username=<user-name>" \
+  -d "password=<password>" \
+  -d "grant_type=password" \
+  | jq -r .access_token)
+
+# Verificar el claim tenant_id en el payload del JWT
+echo $TOKEN | cut -d. -f2 | base64 -d 2>/dev/null | jq '{tenant_id, aud, exp}'
+```
+
+El token puede usarse desde Swagger ([http://localhost:8100/docs](http://localhost:8100/docs)) pulsando **Authorize** (icono de candado, esquina superior derecha), o añadiendo la cabecera en cada petición:
+
+```bash
+curl http://localhost:8100/products \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**6. Arrancar los backends externos (Docker Compose)**
+
+Backend Python (gateway nginx, puerto 80):
+
+```bash
+cd external
+cp .env.example .env
+# Editar .env con los valores reales:
+#   MINIKUBE_IP=$(minikube ip)
+#   ALLOY_BEARER_TOKEN=poc-alloy-external-token
+#   CLUSTER_ALLOY_ENDPOINT=http://$(minikube ip):30320
+#   LANGFUSE_PUBLIC_KEY=pk-lf-poc00000000000000000000000001
+#   LANGFUSE_SECRET_KEY=sk-lf-poc00000000000000000000000001
+#   LANGFUSE_HOST=http://$(minikube ip):30900
+#   KEYCLOAK_URL=https://keycloak.$(minikube ip).nip.io
+docker compose up --build -d
+cd ..
+```
+
+Swagger en [http://localhost/docs](http://localhost/docs).
+
+Backend NestJS (gateway Apache, puerto 81):
+
+```bash
+cd external-nest
+cp .env.example .env
+# Mismas variables que el externo Python más:
+#   KEYCLOAK_AUDIENCE=backend-nest-external
+docker compose up --build -d
+cd ..
+```
+
+Swagger en [http://localhost:81/docs](http://localhost:81/docs).
+
+**7. Generar tráfico**
+
+Backend Python en cluster ([http://localhost:8100](http://localhost:8100)):
+
+```bash
+curl http://localhost:8100/products
+curl http://localhost:8100/orders
+curl http://localhost:8100/products/99    # genera un 404 con log WARNING
+curl -X POST http://localhost:8100/orders \
+  -H "Content-Type: application/json" \
+  -d '{"product_id": 1, "quantity": 2}'
+```
+
+Backend NestJS en cluster ([http://localhost:8200](http://localhost:8200)):
+
+```bash
+curl http://localhost:8200/products
+curl http://localhost:8200/orders
+curl http://localhost:8200/products/99
+curl -X POST http://localhost:8200/orders \
+  -H "Content-Type: application/json" \
+  -d '{"product_id": 1, "quantity": 2}'
+```
+
+Backend Python externo ([http://localhost](http://localhost)):
+
+```bash
+curl http://localhost/products
+curl http://localhost/orders
+curl http://localhost/products/99         # genera un 404 con log WARNING
+curl -X POST http://localhost/orders \
+  -H "Content-Type: application/json" \
+  -d '{"product_id": 1, "quantity": 2}'
+```
+
+Backend NestJS externo ([http://localhost:81](http://localhost:81)):
+
+```bash
+curl http://localhost:81/products
+curl http://localhost:81/orders
+curl http://localhost:81/products/99
+curl -X POST http://localhost:81/orders \
+  -H "Content-Type: application/json" \
+  -d '{"product_id": 1, "quantity": 2}'
+```
+
+**8. Abrir Grafana**
+
+Abrir [http://localhost:3000](http://localhost:3000) con `admin` / `admin` → **Dashboards**:
+- **"Backend — Observabilidad"** — telemetría del backend Python en cluster (`job="apps/backend"`)
+- **"Backend — Observabilidad (Externo)"** — telemetría del backend Python externo (`job="external/backend"`)
+
+> El backend NestJS emite la métrica `http.server.duration` (nombre estándar semconv Node.js OTel), distinto del `http_server_duration_milliseconds` del SDK Python. Para consultarla en Mimir usa `http_server_duration_milliseconds` para el Python y `http_server_duration` para el NestJS (con `job="apps/backend-nest"` o `job="external/backend-nest"`).
+
+> Los datos pueden tardar ~30 segundos en aparecer desde el primer request. Si los paneles están vacíos, genera más tráfico con el bucle de la sección [Generar métricas, logs y trazas](#2-generar-métricas-logs-y-trazas).
 
 ---
 
@@ -64,11 +251,11 @@ Stack de monitorización grafana LGTM sobre Kubernetes
 ./deploy.sh
 ```
 
-El script gestiona el orden correcto de dependencias y despliega todo el stack en el cluster. El backend externo (Docker Compose) **no se arranca automáticamente** — una vez finalizado el script, arráncalo manualmente siguiendo los pasos de la sección [Servicio externo (Docker Compose)](#servicio-externo-docker-compose).
+El script gestiona el orden correcto de dependencias y despliega todo el stack en el cluster. El backend externo (Docker Compose) **no se arranca automáticamente** — una vez finalizado el script, arráncarlo manualmente siguiendo los pasos de la sección [Servicio externo (Docker Compose)](#servicio-externo-docker-compose).
 
 Para un despliegue **paso a paso**:
 
-### Desplieuge paso a paso
+### Despliegue paso a paso
 
 ```bash
 # 1. Namespaces
@@ -118,7 +305,15 @@ kubectl apply -f langfuse/secret.yaml -n langfuse
 helm upgrade --install langfuse langfuse/langfuse \
   -f langfuse/values.yaml -n langfuse
 
-# 8. Servicio externo (Docker Compose)
+# 8. Keycloak (usa los manifiestos oficiales del quickstart)
+minikube addons enable ingress
+kubectl create namespace keycloak --dry-run=client -o yaml | kubectl apply -f -
+kubectl create -f https://raw.githubusercontent.com/keycloak/keycloak-quickstarts/refs/heads/main/kubernetes/keycloak.yaml -n keycloak
+wget -q -O - https://raw.githubusercontent.com/keycloak/keycloak-quickstarts/refs/heads/main/kubernetes/keycloak-ingress.yaml | \
+  sed "s/KEYCLOAK_HOST/keycloak.$(minikube ip).nip.io/" | \
+  kubectl create -f - -n keycloak
+
+# 9. Servicio externo (Docker Compose)
 # Recursos K8s en el cluster: Secret del bearer token y NodePort del receiver externo
 minikube kubectl -- apply -f alloy/external-secret.yaml -n monitoring
 minikube kubectl -- apply -f alloy/nodeport-external.yaml -n monitoring
@@ -127,11 +322,13 @@ minikube kubectl -- apply -f alloy/nodeport-external.yaml -n monitoring
 cd external
 cp .env.example .env
 # Editar .env — valores mínimos necesarios:
+#   MINIKUBE_IP=$(minikube ip)
 #   ALLOY_BEARER_TOKEN=poc-alloy-external-token   # debe coincidir con external-secret.yaml
 #   CLUSTER_ALLOY_ENDPOINT=http://$(minikube ip):30320
 #   LANGFUSE_PUBLIC_KEY=pk-lf-poc00000000000000000000000001
 #   LANGFUSE_SECRET_KEY=sk-lf-poc00000000000000000000000001
 #   LANGFUSE_HOST=http://$(minikube ip):30900
+#   KEYCLOAK_URL=https://keycloak.$(minikube ip).nip.io
 cd ..
 
 # Construir y arrancar el stack externo
@@ -161,32 +358,32 @@ El backend de demo (FastAPI) está instrumentado automáticamente con el OTel Op
 Necesario port forward para exponer el servicio:
 
 ```bash
-minikube kubectl -- port-forward svc/backend 8000 -n apps
+minikube kubectl -- port-forward svc/backend 8100:8000 -n apps
 ```
 
-La generación de tráfico es imprescindible para que los dashboards en Grafana se pueblen. Los datos pueden generarse a través del Swagger en [http://localhost:8000/docs](http://localhost:8000/docs):
+La generación de tráfico es imprescindible para que los dashboards en Grafana se pueblen. Los datos pueden generarse a través del Swagger en [http://localhost:8100/docs](http://localhost:8100/docs):
 
 ```bash
 # Listar productos (GET normal)
-curl http://localhost:8000/products
+curl http://localhost:8100/products
 
 # Obtener producto concreto
-curl http://localhost:8000/products/1
+curl http://localhost:8100/products/1
 
 # Crear un pedido (POST)
-curl -X POST http://localhost:8000/orders \
+curl -X POST http://localhost:8100/orders \
   -H "Content-Type: application/json" \
   -d '{"product_id": 1, "quantity": 2}'
 
 # Provocar un 404 (producto inexistente → genera log WARNING y traza con error)
-curl http://localhost:8000/products/99
+curl http://localhost:8100/products/99
 
 # Listar pedidos y usuarios
-curl http://localhost:8000/orders
-curl http://localhost:8000/users
+curl http://localhost:8100/orders
+curl http://localhost:8100/users
 
 # Endpoint LLM — registra traza completa en Langfuse (retrieval + generation)
-curl -X POST http://localhost:8000/agent/run \
+curl -X POST http://localhost:8100/agent/run \
   -H "Content-Type: application/json" \
   -d '{"query": "gadgets under 50"}'
 ```
@@ -195,9 +392,9 @@ Para generar carga continua:
 
 ```bash
 while true; do
-  curl -s http://localhost:8000/products > /dev/null
-  curl -s http://localhost:8000/orders > /dev/null
-  curl -s http://localhost:8000/products/99 > /dev/null  # genera errores 404
+  curl -s http://localhost:8100/products > /dev/null
+  curl -s http://localhost:8100/orders > /dev/null
+  curl -s http://localhost:8100/products/99 > /dev/null  # genera errores 404
   sleep 1
 done
 ```
@@ -380,7 +577,7 @@ Abrir [http://localhost:3001](http://localhost:3001) e iniciar sesión con `admi
 | **generation** | Genera una respuesta simulando un LLM (`gpt-4o-mini`) | Generation con prompt, completion y tokens |
 
 ```bash
-curl -X POST http://localhost:8000/agent/run \
+curl -X POST http://localhost:8100/agent/run \
   -H "Content-Type: application/json" \
   -d '{"query": "What products are available under $20?"}'
 ```
@@ -394,6 +591,114 @@ minikube kubectl -- get pods -n langfuse
 ```
 
 Los componentes que deben estar `Running` son: `langfuse-web`, `langfuse-worker`, `postgresql`, `clickhouse`, `redis` y `langfuse-minio`.
+
+---
+
+### 6. Keycloak — JWT y tenants
+
+Keycloak se despliega en el namespace `keycloak` y se expone vía Ingress en `https://keycloak.<minikube-ip>.nip.io`. El hostname se resuelve automáticamente a través de [nip.io](https://nip.io) — no requiere modificar `/etc/hosts`.
+
+Obtener la URL exacta:
+
+```bash
+echo "https://keycloak.$(minikube ip).nip.io"
+```
+
+Abrir la consola de administración en esa URL con `admin` / `admin`.
+
+---
+
+Se adjunta un `realm-export.json` con el real y los clientes para cada uno de los backends. Siendo solo necesaria la creacion de los usuarios.
+
+
+#### Crear el realm
+
+1. Panel superior izquierdo → desplegable **"Keycloak"** → **"Create realm"**
+2. **Realm name**: `poc` → **Create**
+
+---
+
+#### Crear los clientes
+
+Repetir los pasos siguientes para los cuatro clientes: `backend-k8s`, `backend-external`, `backend-nest-k8s` y `backend-nest-external`:
+
+1. Menú lateral → **Clients** → **Create client**
+2. **Client type**: OpenID Connect — **Client ID**: `backend-k8s`, `backend-external`, `backend-nest-k8s` o `backend-nest-external` → Next
+3. **Client authentication**: ON — desmarcar todos los flows excepto **Direct access grants** → Next → Save
+4. Pestaña **Credentials** → copiar el **Client secret** (se necesita para obtener tokens)
+5. Pestaña **Client scopes** → clic en `<client-id>-dedicated` → **Add mapper** → **By configuration** → **Audience**
+   - **Name**: `audience`
+   - **Included Client Audience**: `<client-id>` (el mismo que el Client ID)
+   - Save
+6. Volver a **Add mapper** → **By configuration** → **User Attribute**
+   - **Name**: `tenant_id`
+   - **User Attribute**: `tenant_id`
+   - **Token Claim Name**: `tenant_id`
+   - **Claim JSON Type**: String
+   - **Add to access token**: ON → Save
+
+---
+
+#### Crear usuarios
+
+Repetir para `tenant-1` y `tenant-2`:
+
+1. Menú lateral → **Users** → **Create user**
+2. **Username**: `tenant-1` → Create
+3. Pestaña **Attributes** → **Add attribute**:
+   - **Key**: `tenant_id` — **Value**: `tenant-1`
+   - Save
+4. Pestaña **Credentials** → **Set password**
+   - Introducir contraseña — desmarcar **Temporary** → Save
+
+---
+
+#### Obtener un JWT (curl)
+
+```bash
+# Obtener token para tenant-1 usando el cliente backend-k8s
+KEYCLOAK_URL="https://keycloak.$(minikube ip).nip.io"
+TOKEN=$(curl -sk -X POST ${KEYCLOAK_URL}/realms/poc/protocol/openid-connect/token \
+  -d "client_id=backend-k8s" \
+    -d "client_secret=<client-secret>" \
+    -d "username=<user-name>" \
+    -d "password=<password>" \
+    -d "grant_type=password" \ 
+    | jq -r .access_token)
+
+# Verificar el claim tenant_id en el payload del JWT
+echo $TOKEN | cut -d. -f2 | base64 -d 2>/dev/null | jq '{tenant_id, aud, exp}'
+
+# Usar el token en una petición al backend
+curl http://localhost:8100/products \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+El backend extrae el claim `tenant_id` del JWT y lo usa como identificador de tenant. Si no se proporciona token, el endpoint acepta `?tenant_id=tenant-1` como fallback.
+
+---
+
+#### Usar un JWT desde Swagger UI
+
+El backend expone el botón **Authorize** en `/docs`. Primero obtén el token con curl (ver sección anterior) y luego pégalo en Swagger:
+
+1. Abrir el Swagger del backend correspondiente: Python cluster `http://localhost:8100/docs`, NestJS cluster `http://localhost:8200/docs`, Python externo `http://localhost/docs`, NestJS externo `http://localhost:81/docs`
+2. Clic en **Authorize** (botón arriba a la derecha con icono de candado)
+3. En el campo **HTTPBearer**, pegar el valor del token (sin el prefijo `Bearer`)
+4. Clic **Authorize** → **Close**
+5. Todas las peticiones desde Swagger llevarán el JWT automáticamente
+
+---
+
+#### JWTs no intercambiables
+
+Cada cliente Keycloak emite tokens con una audiencia (`aud`) distinta:
+- `backend-k8s` → `aud: ["backend-k8s"]` (backend Python en cluster)
+- `backend-external` → `aud: ["backend-external"]` (backend Python externo)
+- `backend-nest-k8s` → `aud: ["backend-nest-k8s"]` (backend NestJS en cluster)
+- `backend-nest-external` → `aud: ["backend-nest-external"]` (backend NestJS externo)
+
+Cada backend valida que el `aud` coincida con su `KEYCLOAK_AUDIENCE`. Un token de un cliente es rechazado por cualquier otro backend con HTTP 401.
 
 ---
 
@@ -478,9 +783,9 @@ Las queries usan `job="external/backend"` para distinguir la telemetría del ser
 ### Arquitectura del flujo externo
 
 ```
-[Docker Compose]                               [Cluster K8s — minikube]
+[Docker Compose — external/]                   [Cluster K8s — minikube]
   nginx :80
-    └─► backend (opentelemetry-instrument)
+    └─► backend Python (opentelemetry-instrument)
           │ OTLP (red privada Docker)
           ▼
         Alloy ──── Bearer token ────────────► Alloy :30320 (NodePort)
@@ -493,7 +798,67 @@ Las queries usan `job="external/backend"` para distinguir la telemetría del ser
 
 ---
 
-## Configuracion
+## Servicio externo NestJS (Docker Compose)
+
+Equivalente al servicio externo Python pero implementado en NestJS con Apache httpd como gateway (puerto `81`).
+
+### 1. Configurar el entorno
+
+```bash
+cd external-nest
+cp .env.example .env
+```
+
+Editar `.env` con los mismos valores que `external/.env` más:
+
+| Variable | Valor |
+|---|---|
+| `KEYCLOAK_AUDIENCE` | `backend-nest-external` |
+
+### 2. Arrancar el Compose
+
+```bash
+cd external-nest
+docker compose up --build -d
+```
+
+El backend NestJS queda disponible en `http://localhost:81` a través de Apache. Swagger en `http://localhost:81/docs`.
+
+### 3. Generar tráfico
+
+```bash
+curl http://localhost:81/products
+curl http://localhost:81/orders
+curl http://localhost:81/products/99
+curl -X POST http://localhost:81/orders \
+  -H "Content-Type: application/json" \
+  -d '{"product_id": 1, "quantity": 2}'
+curl -X POST http://localhost:81/agent/run \
+  -H "Content-Type: application/json" \
+  -d '{"query": "gadgets under 50"}'
+```
+
+### Arquitectura del flujo externo NestJS
+
+```
+[Docker Compose — external-nest/]              [Cluster K8s — minikube]
+  Apache httpd :81
+    └─► backend-nest (NestJS + OTel SDK)
+          │ OTLP (red privada Docker)
+          ▼
+        alloy-nest ─── Bearer token ─────────► Alloy :30320 (NodePort)
+                                                   │ (valida token)
+                                                   ├─► Tempo   (trazas)
+                                                   ├─► Mimir   (métricas)
+                                                   └─► Loki    (logs OTLP)
+  backend-nest ──── SDK Langfuse ──────────────► Langfuse :30900 (NodePort)
+```
+
+Las métricas se distinguen por `job="external/backend-nest"` (vs `job="external/backend"` del Python).
+
+---
+
+## Configuración
 
 Los datasources (Mimir, Loki, Tempo) se provisionan automáticamente al desplegar Grafana
 a través de `grafana/values.yaml`. No es necesaria ninguna configuración manual adicional.
@@ -641,6 +1006,8 @@ helm uninstall tempo -n monitoring
 helm uninstall alloy -n monitoring
 helm uninstall langfuse -n langfuse
 minikube kubectl -- delete namespace langfuse
+minikube kubectl -- delete -f keycloak/
+minikube kubectl -- delete namespace keycloak
 ```
 
 ## Recursos

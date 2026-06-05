@@ -939,7 +939,7 @@ dashboards:
               "targets": [
                 {
                   "datasource": {"type": "loki", "uid": "loki"},
-                  "expr": "{namespace=\"apps\"}",
+                  "expr": "{namespace=\"apps\", tenant_id=~\"$tenant_id\"}",
                   "refId": "A"
                 }
               ],
@@ -1019,10 +1019,31 @@ dashboards:
           "refresh": "30s",
           "schemaVersion": 38,
           "tags": ["backend", "observabilidad"],
+          "templating": {
+            "list": [
+              {
+                "allValue": ".*",
+                "current": {"selected": true, "text": "All", "value": "$__all"},
+                "hide": 0,
+                "includeAll": true,
+                "label": "Tenant",
+                "multi": false,
+                "name": "tenant_id",
+                "options": [
+                  {"selected": true, "text": "All", "value": "$__all"},
+                  {"selected": false, "text": "tenant-1", "value": "tenant-1"},
+                  {"selected": false, "text": "tenant-2", "value": "tenant-2"}
+                ],
+                "query": "tenant-1,tenant-2",
+                "skipUrlSync": false,
+                "type": "custom"
+              }
+            ]
+          },
           "time": {"from": "now-1h", "to": "now"},
           "timepicker": {},
           "timezone": "browser",
-          "title": "Backend — Observabilidad",
+          "title": "Python — Observabilidad (Cluster)",
           "uid": "backend-obs",
           "version": 1
         }
@@ -1109,7 +1130,7 @@ dashboards:
                 {
                   "datasource": { "type": "loki", "uid": "loki" },
                   "editorMode": "code",
-                  "expr": "{namespace=\"apps\"} |~ \"(?i)${httpMethod}\"",
+                  "expr": "{namespace=\"apps\", tenant_id=~\"$tenant_id\"} |~ \"(?i)${httpMethod}\"",
                   "queryType": "range",
                   "refId": "A"
                 }
@@ -1171,7 +1192,7 @@ dashboards:
                 {
                   "datasource": { "type": "tempo", "uid": "tempo" },
                   "limit": 20,
-                  "query": "{ .service.name = \"backend\" && .http.method =~ \"${httpMethod}\" }",
+                  "query": "{ .service.name = \"backend\" && .http.method =~ \"${httpMethod}\" && .tenant.id =~ \"${tenant_id}\" }",
                   "queryType": "traceql",
                   "refId": "A",
                   "tableType": "traces"
@@ -1221,13 +1242,30 @@ dashboards:
                 "skipUrlSync": false,
                 "sort": 0,
                 "type": "query"
+              },
+              {
+                "allValue": ".*",
+                "current": {"selected": true, "text": "All", "value": "$__all"},
+                "hide": 0,
+                "includeAll": true,
+                "label": "Tenant",
+                "multi": false,
+                "name": "tenant_id",
+                "options": [
+                  {"selected": true, "text": "All", "value": "$__all"},
+                  {"selected": false, "text": "tenant-1", "value": "tenant-1"},
+                  {"selected": false, "text": "tenant-2", "value": "tenant-2"}
+                ],
+                "query": "tenant-1,tenant-2",
+                "skipUrlSync": false,
+                "type": "custom"
               }
             ]
           },
           "time": { "from": "now-15m", "to": "now" },
           "timepicker": {},
           "timezone": "",
-          "title": "Agent Trace Dashboard",
+          "title": "Agent Traces — Python (Cluster)",
           "uid": "agent-trace-dashboard",
           "version": 1,
           "weekStart": ""
@@ -1257,7 +1295,7 @@ dashboards:
               "targets": [
                 {
                   "datasource": {"type": "loki", "uid": "loki"},
-                  "expr": "{job=\"external/backend\"}",
+                  "expr": "{job=\"external/backend\", tenant_id=~\"$tenant_id\"}",
                   "refId": "A"
                 }
               ],
@@ -1337,11 +1375,298 @@ dashboards:
           "refresh": "30s",
           "schemaVersion": 38,
           "tags": ["backend", "observabilidad", "externo"],
+          "templating": {
+            "list": [
+              {
+                "allValue": ".*",
+                "current": {"selected": true, "text": "All", "value": "$__all"},
+                "hide": 0,
+                "includeAll": true,
+                "label": "Tenant",
+                "multi": false,
+                "name": "tenant_id",
+                "options": [
+                  {"selected": true, "text": "All", "value": "$__all"},
+                  {"selected": false, "text": "tenant-1", "value": "tenant-1"},
+                  {"selected": false, "text": "tenant-2", "value": "tenant-2"}
+                ],
+                "query": "tenant-1,tenant-2",
+                "skipUrlSync": false,
+                "type": "custom"
+              }
+            ]
+          },
           "time": {"from": "now-1h", "to": "now"},
           "timepicker": {},
           "timezone": "browser",
-          "title": "Backend — Observabilidad (Externo)",
+          "title": "Python — Observabilidad (Externo)",
           "uid": "backend-ext-obs",
+          "version": 1
+        }
+
+    backend-nest-observability:
+      json: |
+        {
+          "annotations": {"list": []},
+          "editable": true,
+          "graphTooltip": 1,
+          "panels": [
+            {
+              "datasource": {"type": "loki", "uid": "loki"},
+              "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
+              "id": 1,
+              "options": {
+                "dedupStrategy": "none",
+                "enableLogDetails": true,
+                "prettifyLogMessage": false,
+                "showCommonLabels": false,
+                "showLabels": true,
+                "showTime": true,
+                "sortOrder": "Descending",
+                "wrapLogMessage": false
+              },
+              "targets": [
+                {
+                  "datasource": {"type": "loki", "uid": "loki"},
+                  "expr": "{namespace=\"apps\", app=\"backend-nest\"} |~ \"tenant_id=${tenant_id:regex}\"",
+                  "refId": "A"
+                }
+              ],
+              "title": "Logs del backend",
+              "type": "logs"
+            },
+            {
+              "datasource": {"type": "prometheus", "uid": "mimir"},
+              "fieldConfig": {
+                "defaults": {"color": {"mode": "palette-classic"}, "unit": "reqps"},
+                "overrides": []
+              },
+              "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8},
+              "id": 2,
+              "options": {
+                "legend": {"calcs": [], "displayMode": "list", "placement": "bottom"},
+                "tooltip": {"mode": "multi"}
+              },
+              "targets": [
+                {
+                  "datasource": {"type": "prometheus", "uid": "mimir"},
+                  "expr": "sum(rate(http_server_duration_milliseconds_count{job=\"apps/backend-nest\"}[2m])) by (http_route)",
+                  "legendFormat": "{{http_route}}",
+                  "refId": "A"
+                }
+              ],
+              "title": "Request Rate (req/s)",
+              "type": "timeseries"
+            },
+            {
+              "datasource": {"type": "prometheus", "uid": "mimir"},
+              "fieldConfig": {
+                "defaults": {"color": {"mode": "palette-classic"}, "unit": "ms"},
+                "overrides": []
+              },
+              "gridPos": {"h": 8, "w": 8, "x": 8, "y": 8},
+              "id": 3,
+              "options": {
+                "legend": {"calcs": [], "displayMode": "list", "placement": "bottom"},
+                "tooltip": {"mode": "multi"}
+              },
+              "targets": [
+                {
+                  "datasource": {"type": "prometheus", "uid": "mimir"},
+                  "expr": "histogram_quantile(0.99, sum(rate(http_server_duration_milliseconds_bucket{job=\"apps/backend-nest\"}[2m])) by (le, http_route))",
+                  "legendFormat": "p99 {{http_route}}",
+                  "refId": "A"
+                }
+              ],
+              "title": "Latencia p99",
+              "type": "timeseries"
+            },
+            {
+              "datasource": {"type": "prometheus", "uid": "mimir"},
+              "fieldConfig": {
+                "defaults": {"color": {"mode": "fixed", "fixedColor": "red"}, "unit": "percentunit"},
+                "overrides": []
+              },
+              "gridPos": {"h": 8, "w": 8, "x": 16, "y": 8},
+              "id": 4,
+              "options": {
+                "legend": {"calcs": [], "displayMode": "list", "placement": "bottom"},
+                "tooltip": {"mode": "multi"}
+              },
+              "targets": [
+                {
+                  "datasource": {"type": "prometheus", "uid": "mimir"},
+                  "expr": "sum(rate(http_server_duration_milliseconds_count{job=\"apps/backend-nest\",http_status_code=~\"5..\"}[2m])) / sum(rate(http_server_duration_milliseconds_count{job=\"apps/backend-nest\"}[2m]))",
+                  "legendFormat": "Error rate",
+                  "refId": "A"
+                }
+              ],
+              "title": "Tasa de errores 5xx",
+              "type": "timeseries"
+            }
+          ],
+          "refresh": "30s",
+          "schemaVersion": 38,
+          "tags": ["nestjs", "observabilidad", "cluster"],
+          "templating": {
+            "list": [
+              {
+                "allValue": ".*",
+                "current": {"selected": true, "text": "All", "value": "$__all"},
+                "hide": 0,
+                "includeAll": true,
+                "label": "Tenant",
+                "multi": false,
+                "name": "tenant_id",
+                "options": [
+                  {"selected": true, "text": "All", "value": "$__all"},
+                  {"selected": false, "text": "tenant-1", "value": "tenant-1"},
+                  {"selected": false, "text": "tenant-2", "value": "tenant-2"}
+                ],
+                "query": "tenant-1,tenant-2",
+                "skipUrlSync": false,
+                "type": "custom"
+              }
+            ]
+          },
+          "time": {"from": "now-1h", "to": "now"},
+          "timepicker": {},
+          "timezone": "browser",
+          "title": "NestJS — Observabilidad (Cluster)",
+          "uid": "backend-nest-obs",
+          "version": 1
+        }
+
+    backend-nest-ext-observabilidad:
+      json: |
+        {
+          "annotations": {"list": []},
+          "editable": true,
+          "graphTooltip": 1,
+          "panels": [
+            {
+              "datasource": {"type": "loki", "uid": "loki"},
+              "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
+              "id": 1,
+              "options": {
+                "dedupStrategy": "none",
+                "enableLogDetails": true,
+                "prettifyLogMessage": false,
+                "showCommonLabels": false,
+                "showLabels": true,
+                "showTime": true,
+                "sortOrder": "Descending",
+                "wrapLogMessage": false
+              },
+              "targets": [
+                {
+                  "datasource": {"type": "loki", "uid": "loki"},
+                  "expr": "{job=\"external/backend-nest\"} |~ \"tenant_id=${tenant_id:regex}\"",
+                  "refId": "A"
+                }
+              ],
+              "title": "Logs del backend (externo)",
+              "type": "logs"
+            },
+            {
+              "datasource": {"type": "prometheus", "uid": "mimir"},
+              "fieldConfig": {
+                "defaults": {"color": {"mode": "palette-classic"}, "unit": "reqps"},
+                "overrides": []
+              },
+              "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8},
+              "id": 2,
+              "options": {
+                "legend": {"calcs": [], "displayMode": "list", "placement": "bottom"},
+                "tooltip": {"mode": "multi"}
+              },
+              "targets": [
+                {
+                  "datasource": {"type": "prometheus", "uid": "mimir"},
+                  "expr": "sum(rate(http_server_duration_milliseconds_count{job=\"external/backend-nest\"}[2m])) by (http_target)",
+                  "legendFormat": "{{http_target}}",
+                  "refId": "A"
+                }
+              ],
+              "title": "Request Rate (req/s)",
+              "type": "timeseries"
+            },
+            {
+              "datasource": {"type": "prometheus", "uid": "mimir"},
+              "fieldConfig": {
+                "defaults": {"color": {"mode": "palette-classic"}, "unit": "ms"},
+                "overrides": []
+              },
+              "gridPos": {"h": 8, "w": 8, "x": 8, "y": 8},
+              "id": 3,
+              "options": {
+                "legend": {"calcs": [], "displayMode": "list", "placement": "bottom"},
+                "tooltip": {"mode": "multi"}
+              },
+              "targets": [
+                {
+                  "datasource": {"type": "prometheus", "uid": "mimir"},
+                  "expr": "histogram_quantile(0.99, sum(rate(http_server_duration_milliseconds_bucket{job=\"external/backend-nest\"}[2m])) by (le, http_target))",
+                  "legendFormat": "p99 {{http_target}}",
+                  "refId": "A"
+                }
+              ],
+              "title": "Latencia p99",
+              "type": "timeseries"
+            },
+            {
+              "datasource": {"type": "prometheus", "uid": "mimir"},
+              "fieldConfig": {
+                "defaults": {"color": {"mode": "fixed", "fixedColor": "red"}, "unit": "percentunit"},
+                "overrides": []
+              },
+              "gridPos": {"h": 8, "w": 8, "x": 16, "y": 8},
+              "id": 4,
+              "options": {
+                "legend": {"calcs": [], "displayMode": "list", "placement": "bottom"},
+                "tooltip": {"mode": "multi"}
+              },
+              "targets": [
+                {
+                  "datasource": {"type": "prometheus", "uid": "mimir"},
+                  "expr": "sum(rate(http_server_duration_milliseconds_count{job=\"external/backend-nest\",http_status_code=~\"5..\"}[2m])) / sum(rate(http_server_duration_milliseconds_count{job=\"external/backend-nest\"}[2m]))",
+                  "legendFormat": "Error rate",
+                  "refId": "A"
+                }
+              ],
+              "title": "Tasa de errores 5xx",
+              "type": "timeseries"
+            }
+          ],
+          "refresh": "30s",
+          "schemaVersion": 38,
+          "tags": ["nestjs", "observabilidad", "externo"],
+          "templating": {
+            "list": [
+              {
+                "allValue": ".*",
+                "current": {"selected": true, "text": "All", "value": "$__all"},
+                "hide": 0,
+                "includeAll": true,
+                "label": "Tenant",
+                "multi": false,
+                "name": "tenant_id",
+                "options": [
+                  {"selected": true, "text": "All", "value": "$__all"},
+                  {"selected": false, "text": "tenant-1", "value": "tenant-1"},
+                  {"selected": false, "text": "tenant-2", "value": "tenant-2"}
+                ],
+                "query": "tenant-1,tenant-2",
+                "skipUrlSync": false,
+                "type": "custom"
+              }
+            ]
+          },
+          "time": {"from": "now-1h", "to": "now"},
+          "timepicker": {},
+          "timezone": "browser",
+          "title": "NestJS — Observabilidad (Externo)",
+          "uid": "backend-nest-ext-obs",
           "version": 1
         }
 
@@ -1373,7 +1698,7 @@ dashboards:
               },
               "targets": [{
                 "datasource": {"type": "grafana-clickhouse-datasource", "uid": "langfuse-clickhouse"},
-                "rawSql": "SELECT count() AS runs FROM traces WHERE name = 'agent-run' AND is_deleted = 0 AND timestamp >= $__fromTime AND timestamp < $__toTime",
+                "rawSql": "SELECT count() AS runs FROM traces WHERE name = 'agent-run' AND is_deleted = 0 AND timestamp >= $__fromTime AND timestamp < $__toTime AND match(ifNull(user_id, ''), '${tenant_id:raw}')",
                 "refId": "A", "format": 1
               }],
               "title": "Ejecuciones del agente",
@@ -1398,7 +1723,7 @@ dashboards:
               },
               "targets": [{
                 "datasource": {"type": "grafana-clickhouse-datasource", "uid": "langfuse-clickhouse"},
-                "rawSql": "SELECT sum(usage_details['input']) AS prompt_tokens FROM observations WHERE type = 'GENERATION' AND is_deleted = 0 AND start_time >= $__fromTime AND start_time < $__toTime",
+                "rawSql": "SELECT sum(usage_details['input']) AS prompt_tokens FROM observations WHERE type = 'GENERATION' AND is_deleted = 0 AND start_time >= $__fromTime AND start_time < $__toTime AND trace_id IN (SELECT id FROM traces WHERE match(ifNull(user_id, ''), '${tenant_id:raw}') AND is_deleted = 0)",
                 "refId": "A", "format": 1
               }],
               "title": "Tokens de entrada (prompt)",
@@ -1423,7 +1748,7 @@ dashboards:
               },
               "targets": [{
                 "datasource": {"type": "grafana-clickhouse-datasource", "uid": "langfuse-clickhouse"},
-                "rawSql": "SELECT sum(usage_details['output']) AS completion_tokens FROM observations WHERE type = 'GENERATION' AND is_deleted = 0 AND start_time >= $__fromTime AND start_time < $__toTime",
+                "rawSql": "SELECT sum(usage_details['output']) AS completion_tokens FROM observations WHERE type = 'GENERATION' AND is_deleted = 0 AND start_time >= $__fromTime AND start_time < $__toTime AND trace_id IN (SELECT id FROM traces WHERE match(ifNull(user_id, ''), '${tenant_id:raw}') AND is_deleted = 0)",
                 "refId": "A", "format": 1
               }],
               "title": "Tokens de salida (completion)",
@@ -1455,7 +1780,7 @@ dashboards:
               },
               "targets": [{
                 "datasource": {"type": "grafana-clickhouse-datasource", "uid": "langfuse-clickhouse"},
-                "rawSql": "SELECT round(avg(dateDiff('millisecond', start_time, end_time))) AS avg_latency_ms FROM observations WHERE type = 'GENERATION' AND is_deleted = 0 AND end_time IS NOT NULL AND start_time >= $__fromTime AND start_time < $__toTime",
+                "rawSql": "SELECT round(avg(dateDiff('millisecond', start_time, end_time))) AS avg_latency_ms FROM observations WHERE type = 'GENERATION' AND is_deleted = 0 AND end_time IS NOT NULL AND start_time >= $__fromTime AND start_time < $__toTime AND trace_id IN (SELECT id FROM traces WHERE match(ifNull(user_id, ''), '${tenant_id:raw}') AND is_deleted = 0)",
                 "refId": "A", "format": 1
               }],
               "title": "Latencia media de generación",
@@ -1484,7 +1809,7 @@ dashboards:
               },
               "targets": [{
                 "datasource": {"type": "grafana-clickhouse-datasource", "uid": "langfuse-clickhouse"},
-                "rawSql": "SELECT toStartOfInterval(start_time, toIntervalSecond($__interval_s)) AS time, sum(usage_details['input']) AS \"Prompt tokens\", sum(usage_details['output']) AS \"Completion tokens\" FROM observations WHERE type = 'GENERATION' AND is_deleted = 0 AND start_time >= $__fromTime AND start_time < $__toTime GROUP BY time ORDER BY time ASC",
+                "rawSql": "SELECT toStartOfInterval(start_time, toIntervalSecond($__interval_s)) AS time, sum(usage_details['input']) AS \"Prompt tokens\", sum(usage_details['output']) AS \"Completion tokens\" FROM observations WHERE type = 'GENERATION' AND is_deleted = 0 AND start_time >= $__fromTime AND start_time < $__toTime AND trace_id IN (SELECT id FROM traces WHERE match(ifNull(user_id, ''), '${tenant_id:raw}') AND is_deleted = 0) GROUP BY time ORDER BY time ASC",
                 "refId": "A", "format": 0
               }],
               "title": "Tokens por intervalo",
@@ -1513,7 +1838,7 @@ dashboards:
               },
               "targets": [{
                 "datasource": {"type": "grafana-clickhouse-datasource", "uid": "langfuse-clickhouse"},
-                "rawSql": "SELECT toStartOfInterval(timestamp, toIntervalSecond($__interval_s)) AS time, count() AS ejecuciones FROM traces WHERE name = 'agent-run' AND is_deleted = 0 AND timestamp >= $__fromTime AND timestamp < $__toTime GROUP BY time ORDER BY time ASC",
+                "rawSql": "SELECT toStartOfInterval(timestamp, toIntervalSecond($__interval_s)) AS time, count() AS ejecuciones FROM traces WHERE name = 'agent-run' AND is_deleted = 0 AND timestamp >= $__fromTime AND timestamp < $__toTime AND match(ifNull(user_id, ''), '${tenant_id:raw}') GROUP BY time ORDER BY time ASC",
                 "refId": "A", "format": 0
               }],
               "title": "Ejecuciones por intervalo",
@@ -1535,7 +1860,7 @@ dashboards:
               },
               "targets": [{
                 "datasource": {"type": "grafana-clickhouse-datasource", "uid": "langfuse-clickhouse"},
-                "rawSql": "SELECT ifNull(provided_model_name, 'unknown') AS model, count() AS runs FROM observations WHERE type = 'GENERATION' AND is_deleted = 0 AND start_time >= $__fromTime AND start_time < $__toTime GROUP BY provided_model_name ORDER BY runs DESC",
+                "rawSql": "SELECT ifNull(provided_model_name, 'unknown') AS model, count() AS runs FROM observations WHERE type = 'GENERATION' AND is_deleted = 0 AND start_time >= $__fromTime AND start_time < $__toTime AND trace_id IN (SELECT id FROM traces WHERE match(ifNull(user_id, ''), '${tenant_id:raw}') AND is_deleted = 0) GROUP BY provided_model_name ORDER BY runs DESC",
                 "refId": "A", "format": 1
               }],
               "title": "Generaciones por modelo",
@@ -1564,10 +1889,39 @@ dashboards:
               },
               "targets": [{
                 "datasource": {"type": "grafana-clickhouse-datasource", "uid": "langfuse-clickhouse"},
-                "rawSql": "SELECT ifNull(provided_model_name, 'unknown') AS model, sum(usage_details['input']) AS \"Prompt tokens\", sum(usage_details['output']) AS \"Completion tokens\" FROM observations WHERE type = 'GENERATION' AND is_deleted = 0 AND start_time >= $__fromTime AND start_time < $__toTime GROUP BY provided_model_name ORDER BY (sum(usage_details['input']) + sum(usage_details['output'])) DESC",
+                "rawSql": "SELECT ifNull(provided_model_name, 'unknown') AS model, sum(usage_details['input']) AS \"Prompt tokens\", sum(usage_details['output']) AS \"Completion tokens\" FROM observations WHERE type = 'GENERATION' AND is_deleted = 0 AND start_time >= $__fromTime AND start_time < $__toTime AND trace_id IN (SELECT id FROM traces WHERE match(ifNull(user_id, ''), '${tenant_id:raw}') AND is_deleted = 0) GROUP BY provided_model_name ORDER BY (sum(usage_details['input']) + sum(usage_details['output'])) DESC",
                 "refId": "A", "format": 1
               }],
               "title": "Tokens por modelo",
+              "type": "barchart"
+            },
+            {
+              "datasource": {"type": "grafana-clickhouse-datasource", "uid": "langfuse-clickhouse"},
+              "fieldConfig": {
+                "defaults": {
+                  "color": {"mode": "palette-classic"},
+                  "unit": "short",
+                  "custom": {"fillOpacity": 80, "lineWidth": 1}
+                },
+                "overrides": []
+              },
+              "gridPos": {"h": 8, "w": 24, "x": 0, "y": 20},
+              "id": 10,
+              "options": {
+                "barRadius": 0.05,
+                "groupWidth": 0.7,
+                "legend": {"calcs": ["sum"], "displayMode": "list", "placement": "bottom", "showLegend": true},
+                "orientation": "auto",
+                "stacking": "normal",
+                "tooltip": {"mode": "multi", "sort": "desc"},
+                "xTickLabelRotation": 0
+              },
+              "targets": [{
+                "datasource": {"type": "grafana-clickhouse-datasource", "uid": "langfuse-clickhouse"},
+                "rawSql": "SELECT ifNull(t.user_id, 'unknown') AS tenant, sum(usage_details['input']) AS \"Prompt tokens\", sum(usage_details['output']) AS \"Completion tokens\" FROM observations o JOIN traces t ON o.trace_id = t.id AND t.is_deleted = 0 WHERE o.type = 'GENERATION' AND o.is_deleted = 0 AND o.start_time >= $__fromTime AND o.start_time < $__toTime AND match(ifNull(t.user_id, ''), '${tenant_id:raw}') GROUP BY tenant ORDER BY (sum(usage_details['input']) + sum(usage_details['output'])) DESC",
+                "refId": "A", "format": 1
+              }],
+              "title": "Tokens por tenant",
               "type": "barchart"
             },
             {
@@ -1599,6 +1953,10 @@ dashboards:
                     "properties": [{"id": "custom.width", "value": 160}]
                   },
                   {
+                    "matcher": {"id": "byName", "options": "Tenant"},
+                    "properties": [{"id": "custom.width", "value": 100}]
+                  },
+                  {
                     "matcher": {"id": "byName", "options": "Modelo"},
                     "properties": [{"id": "custom.width", "value": 140}]
                   },
@@ -1616,7 +1974,7 @@ dashboards:
                   }
                 ]
               },
-              "gridPos": {"h": 10, "w": 24, "x": 0, "y": 20},
+              "gridPos": {"h": 10, "w": 24, "x": 0, "y": 28},
               "id": 9,
               "options": {
                 "cellHeight": "sm",
@@ -1626,7 +1984,7 @@ dashboards:
               },
               "targets": [{
                 "datasource": {"type": "grafana-clickhouse-datasource", "uid": "langfuse-clickhouse"},
-                "rawSql": "SELECT t.timestamp AS \"Tiempo\", ifNull(JSONExtractString(t.input, 'query'), t.input) AS \"Query\", ifNull(o.provided_model_name, '-') AS \"Modelo\", ifNull(toUInt64(usage_details['input']), 0) AS \"Prompt tokens\", ifNull(toUInt64(usage_details['output']), 0) AS \"Completion tokens\", (ifNull(toUInt64(usage_details['input']), 0) + ifNull(toUInt64(usage_details['output']), 0)) AS \"Total tokens\", if(isNotNull(o.end_time), toInt64(dateDiff('millisecond', o.start_time, o.end_time)), 0) AS \"Latencia (ms)\", arrayStringConcat(t.tags, ', ') AS \"Tags\" FROM traces t LEFT JOIN observations o ON o.trace_id = t.id AND o.type = 'GENERATION' AND o.is_deleted = 0 WHERE t.name = 'agent-run' AND t.is_deleted = 0 AND t.timestamp >= $__fromTime AND t.timestamp < $__toTime ORDER BY t.timestamp DESC LIMIT 50",
+                "rawSql": "SELECT t.timestamp AS \"Tiempo\", ifNull(t.user_id, 'unknown') AS \"Tenant\", ifNull(JSONExtractString(t.input, 'query'), t.input) AS \"Query\", ifNull(o.provided_model_name, '-') AS \"Modelo\", ifNull(toUInt64(usage_details['input']), 0) AS \"Prompt tokens\", ifNull(toUInt64(usage_details['output']), 0) AS \"Completion tokens\", (ifNull(toUInt64(usage_details['input']), 0) + ifNull(toUInt64(usage_details['output']), 0)) AS \"Total tokens\", if(isNotNull(o.end_time), toInt64(dateDiff('millisecond', o.start_time, o.end_time)), 0) AS \"Latencia (ms)\" FROM traces t LEFT JOIN observations o ON o.trace_id = t.id AND o.type = 'GENERATION' AND o.is_deleted = 0 WHERE t.name = 'agent-run' AND t.is_deleted = 0 AND t.timestamp >= $__fromTime AND t.timestamp < $__toTime AND match(ifNull(t.user_id, ''), '${tenant_id:raw}') ORDER BY t.timestamp DESC LIMIT 50",
                 "refId": "A", "format": 1
               }],
               "title": "Últimas ejecuciones del agente",
@@ -1636,7 +1994,27 @@ dashboards:
           "refresh": "30s",
           "schemaVersion": 38,
           "tags": ["llm", "langfuse", "clickhouse", "ai"],
-          "templating": {"list": []},
+          "templating": {
+            "list": [
+              {
+                "allValue": ".*",
+                "current": {"selected": true, "text": "All", "value": "$__all"},
+                "hide": 0,
+                "includeAll": true,
+                "label": "Tenant",
+                "multi": false,
+                "name": "tenant_id",
+                "options": [
+                  {"selected": true, "text": "All", "value": "$__all"},
+                  {"selected": false, "text": "tenant-1", "value": "tenant-1"},
+                  {"selected": false, "text": "tenant-2", "value": "tenant-2"}
+                ],
+                "query": "tenant-1,tenant-2",
+                "skipUrlSync": false,
+                "type": "custom"
+              }
+            ]
+          },
           "time": {"from": "now-6h", "to": "now"},
           "timepicker": {},
           "timezone": "browser",

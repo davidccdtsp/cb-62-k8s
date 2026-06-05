@@ -154,7 +154,18 @@ alloy:
 
       loki.source.kubernetes "pods" {
         targets    = discovery.relabel.pod_logs.output
+        forward_to = [loki.process.extract_tenant.receiver]
+      }
+
+      loki.process "extract_tenant" {
         forward_to = [loki.write.loki.receiver]
+
+        stage.regex {
+          expression = "tenant_id=(?P<tenant_id>[^\\s,]+)"
+        }
+        stage.labels {
+          values = { tenant_id = null }
+        }
       }
 
       loki.write "loki" {
@@ -226,7 +237,7 @@ alloy:
       }
 
       otelcol.exporter.loki "logs" {
-        forward_to = [loki.write.loki.receiver]
+        forward_to = [loki.process.extract_tenant.receiver]
       }
 
   extraEnv:

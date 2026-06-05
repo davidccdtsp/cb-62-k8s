@@ -1,26 +1,26 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: backend
+  name: backend-nest
   namespace: apps
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: backend
+      app: backend-nest
   template:
     metadata:
       labels:
-        app: backend
+        app: backend-nest
       annotations:
-        instrumentation.opentelemetry.io/inject-python: "true"
+        instrumentation.opentelemetry.io/inject-nodejs: "backend-nest"
     spec:
       containers:
-        - name: backend
-          image: backend:latest
+        - name: backend-nest
+          image: backend-nest:latest
           imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 8000
+            - containerPort: 3000
           env:
             - name: LANGFUSE_PUBLIC_KEY
               valueFrom:
@@ -41,12 +41,10 @@ spec:
             - name: KEYCLOAK_REALM
               value: "poc"
             - name: KEYCLOAK_AUDIENCE
-              value: "backend-k8s"
-            - name: KEYCLOAK_TOKEN_URL
-              value: "http://keycloak.${MINIKUBE_IP}.nip.io/realms/poc/protocol/openid-connect/token"
+              value: "backend-nest-k8s"
           resources:
             requests:
               cpu: 50m
-              memory: 64Mi
+              memory: 128Mi
             limits:
-              memory: 256Mi
+              memory: 512Mi
