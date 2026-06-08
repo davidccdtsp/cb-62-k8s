@@ -1583,8 +1583,8 @@ dashboards:
               "targets": [
                 {
                   "datasource": {"type": "prometheus", "uid": "mimir"},
-                  "expr": "sum(rate(http_server_duration_milliseconds_count{job=\"external/backend-nest\"}[2m])) by (http_target)",
-                  "legendFormat": "{{http_target}}",
+                  "expr": "sum(rate(http_server_duration_milliseconds_count{job=\"external/backend-nest\"}[2m])) by (http_route)",
+                  "legendFormat": "{{http_route}}",
                   "refId": "A"
                 }
               ],
@@ -1606,8 +1606,8 @@ dashboards:
               "targets": [
                 {
                   "datasource": {"type": "prometheus", "uid": "mimir"},
-                  "expr": "histogram_quantile(0.99, sum(rate(http_server_duration_milliseconds_bucket{job=\"external/backend-nest\"}[2m])) by (le, http_target))",
-                  "legendFormat": "p99 {{http_target}}",
+                  "expr": "histogram_quantile(0.99, sum(rate(http_server_duration_milliseconds_bucket{job=\"external/backend-nest\"}[2m])) by (le, http_route))",
+                  "legendFormat": "p99 {{http_route}}",
                   "refId": "A"
                 }
               ],
